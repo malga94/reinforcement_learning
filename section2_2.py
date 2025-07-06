@@ -1,4 +1,5 @@
 import random
+import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 
 N = 10
@@ -29,7 +30,7 @@ class Agent:
 		self.value_store = {f'action{i}': 0 for i in range(N)}
 		self.choice_counter = {f'action{i}': 0 for i in range(N)}
 		self.levers = {f'action{i}': levers[i] for i in range(N)}
-
+		self.reward = 0
 		self.epsilon = 0
 
 	def update_value_store(self, choice: str, reward: float) -> None:
@@ -40,29 +41,46 @@ class Agent:
 		k = self.choice_counter[choice]
 		old_est = self.value_store[choice]
 		self.value_store[choice] = old_est + 1/k*(reward - old_est)
+
+	def _update_internals(self, action: str, reward: float):
 	
-	def choose_action(self):
+		self.choice_counter[action] += 1
+		self.update_value_store(action, reward)
+		self.reward += reward
 		
+	def choose_action(self) -> (str, float):
+		
+		#If statement for the epsilon-greedy version
 		if random.uniform(0,1) < self.epsilon:
 			action = random.choice(list(self.value_store.keys()))
 			reward = self.levers[action].return_reward()
-			self.choice_counter[action] += 1
-			self.update_value_store(action, reward)
-			return action
+			self._update_internals(action, reward)
+			return action, reward
+		
 		action = max(self.value_store, key=self.value_store.get)
 		reward = self.levers[action].return_reward()
-		self.choice_counter[action] += 1
-		self.update_value_store(action, reward)
-		return action
+		self._update_internals(action, reward)
+		return action, reward
 
 def main():
 
-	action_values = [random.normalvariate(0,1) for _ in range(N)]
-	levers = [LevaDelBandito(mean, 1) for mean in action_values]
-	
-	agent = Agent(levers)
-	action = agent.choose_action()
-	print(action)	
 
+	rewards = [0]*1000
+	for k in range(1,2001):
+	
+		action_values = [random.normalvariate(0,1) for _ in range(N)]
+		
+		levers = [LevaDelBandito(mean, 1) for mean in action_values]
+		agent = Agent(levers)
+		for i in range(1000):
+			action, reward = agent.choose_action()
+			rewards[i] += 1/k*(reward - rewards[i])
+			#print(action, reward, agent.reward)	
+	
+	xs = [x for x in range(1,1001)]
+	plt.plot(xs, rewards)
+	plt.show()
+	plt.close()	
+	
 if __name__ == '__main__':
 	main()
