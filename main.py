@@ -1,4 +1,5 @@
 import random
+import matplotlib.pyplot as plt
 from utils.abstracts import (
     StationaryBanditArmAction,
     Environment,
@@ -67,7 +68,7 @@ from utils.abstracts import (
 N = 10
 bandit_arms = [
     StationaryBanditArmAction(
-        name=f"action{i}", real_value=random.uniform(0, 10), std=random.uniform(1, 5)
+        name=f"action{i}", real_value=random.uniform(0, 10), std=random.uniform(0, 1)
     )
     for i in range(N)
 ]
@@ -90,7 +91,7 @@ agent = ActionValueAgent(
 
 data_collector = {}
 
-for i in range(2000):
+for i in range(200):
     # agent.summary()
     data_collector[i] = agent.sumary_as_dict()
     agent.perform_action()
@@ -98,3 +99,26 @@ agent.summary()
 
 for arm in bandit_arms:
     print(arm)
+
+
+############################################
+############################################
+############################################
+
+
+# Create visualizations
+print("\nCreating visualizations...")
+from utils.visualizer import RLVisualizer
+
+visualizer = RLVisualizer()
+
+# Create comprehensive dashboard
+visualizer.create_comprehensive_dashboard(
+    data_collector=data_collector,
+    bandit_arms=bandit_arms,
+    agent_name="BanditAgent",
+    boltzmann_probabilities=True,
+)
+
+# Print final summary
+visualizer.print_final_summary(data_collector, bandit_arms)

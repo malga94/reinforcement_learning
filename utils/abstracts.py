@@ -106,7 +106,7 @@ class ActionValueGradientAscentOptions(pydantic.BaseModel, StrategyOptions):
     step_size: float = 0.1  # Step size for gradient ascent
 
 
-###################################
+#################################
 
 
 class ActionRepresentation(ABC):
@@ -267,6 +267,9 @@ class ActionValueAgent(ABC):
             )
 
         elif self.implementation == ActionValueAgentStrategy.GradientAscent:
+            """
+            N.B.: In this implementation, I don't think that the estimated value must converge to the real value!!!!
+            """
 
             # Chosen value update
             action.estimated_value += (
