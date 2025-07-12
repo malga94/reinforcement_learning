@@ -1,4 +1,5 @@
 import random
+from typing import List,Tuple
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 
@@ -22,7 +23,7 @@ class LevaDelBandito(Lever):
 		parameters deterimned by the class constructor
 		"""	
 		
-		return random.normalvariate(self.mean, self.std)	
+		return random.normalvariate(self.mean, self.std)
 
 class Agent:
 	
@@ -31,7 +32,6 @@ class Agent:
 		self.choice_counter = {f'action{i}': 0 for i in range(N)}
 		self.levers = {f'action{i}': levers[i] for i in range(N)}
 		self.reward = 0
-		self.epsilon = 0
 
 	def update_value_store(self, choice: str, reward: float) -> None:
 		"""
@@ -47,9 +47,9 @@ class Agent:
 		self.choice_counter[action] += 1
 		self.update_value_store(action, reward)
 		self.reward += reward
-		
-	def choose_action(self) -> (str, float):
-		
+
+	def choose_action(self) -> Tuple[str, float]:
+
 		#If statement for the epsilon-greedy version
 		if random.uniform(0,1) < self.epsilon:
 			action = random.choice(list(self.value_store.keys()))
