@@ -66,6 +66,30 @@ class StationaryBanditArmAction(Action):
         return BanditRevenue(value=reward_value)
 
     def __repr__(self) -> str:
+        return f"BanditArmAction(name={self.name}, real_value={self.real_value}, std={self.std})"
+    
+class NonStationaryBanditArmAction(Action):
+    """
+    Represents an action that corresponds to pulling a bandit arm.
+    """
+
+    def __init__(self, name: str, std: float, real_value: float, variance: float, trend: float) -> None:
+        super().__init__(name)
+        self.real_value = real_value
+        self.std = std  # noise std
+        self.variance = variance  # How much the real value can change in one time step
+        self.trend = trend  # How much the real value changes over time
+
+    def execute(self) -> Revenue:
+        """
+        Execute the action by pulling the bandit arm and returning a reward.
+        """
+        reward_value = random.normalvariate(self.real_value, self.std)
+        self.real_value += random.normalvariate(self.trend, self.variance)
+
+        return BanditRevenue(value=reward_value)
+
+    def __repr__(self) -> str:
         return f"BanditArmAction(name={self.name}, real_value={self.real_value}, std={self.std}, mean={self.mean})"
 
 
@@ -94,7 +118,7 @@ class ActionValueIncrementalOptions(pydantic.BaseModel, StrategyOptions):
 
     stationary_problem: bool = True
     step_size: float = 0.1  # Used in non-stationary problems
-    espsilon: float = 0.1  # Epsilon for exploration in epsilon-greedy strategy
+    epsilon: float = 0.1  # Epsilon for exploration in epsilon-greedy strategy
     ucb_flag: bool = False  # Use UCB strategy if True
 
 
@@ -218,7 +242,7 @@ class ActionValueAgent(ABC):
 
         # Log experiment initialization
         strategy_params = {
-            "epsilon": getattr(options, "espsilon", "N/A"),
+            "epsilon": getattr(options, "epsilon", "N/A"),
             "step_size": getattr(options, "step_size", "N/A"),
             "stationary": getattr(options, "stationary_problem", "N/A"),
         }
