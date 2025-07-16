@@ -56,13 +56,36 @@ class StationaryBanditArmAction(Action):
         super().__init__(name)
         self.real_value = real_value
         self.std = std  # noise std
-        self.mean = 0  # noise mean
 
     def execute(self) -> Revenue:
         """
         Execute the action by pulling the bandit arm and returning a reward.
         """
-        reward_value = self.real_value + random.normalvariate(self.mean, self.std)
+        reward_value = random.normalvariate(self.real_value, self.std)
+
+        return BanditRevenue(value=reward_value)
+
+    def __repr__(self) -> str:
+        return f"BanditArmAction(name={self.name}, real_value={self.real_value}, std={self.std})"
+    
+class NonStationaryBanditArmAction(Action):
+    """
+    Represents an action that corresponds to pulling a bandit arm.
+    """
+
+    def __init__(self, name: str, std: float, real_value: float, variance: float, trend: float) -> None:
+        super().__init__(name)
+        self.real_value = real_value
+        self.std = std  # noise std
+        self.variance = variance  # How much the real value can change in one time step
+        self.trend = trend  # How much the real value changes over time
+
+    def execute(self) -> Revenue:
+        """
+        Execute the action by pulling the bandit arm and returning a reward.
+        """
+        reward_value = random.normalvariate(self.real_value, self.std)
+        self.real_value += random.normalvariate(self.trend, self.variance)
 
         return BanditRevenue(value=reward_value)
 
@@ -95,7 +118,8 @@ class ActionValueIncrementalOptions(pydantic.BaseModel, StrategyOptions):
 
     stationary_problem: bool = True
     step_size: float = 0.1  # Used in non-stationary problems
-    espsilon: float = 0.1  # Epsilon for exploration in epsilon-greedy strategy
+    epsilon: float = 0.1  # Epsilon for exploration in epsilon-greedy strategy
+    ucb_flag: bool = False  # Use UCB strategy if True
 
 
 class ActionValueGradientAscentOptions(pydantic.BaseModel, StrategyOptions):
@@ -107,7 +131,6 @@ class ActionValueGradientAscentOptions(pydantic.BaseModel, StrategyOptions):
 
 
 #################################
-
 
 class ActionRepresentation(ABC):
     """
@@ -124,6 +147,73 @@ class ActionRepresentation(ABC):
         # Attribute used by Gradient Ascent strategy
         self.boltzmann_prob: float = 0.0
 
+class ChoiceGreedy:
+    """
+    This class represents a greedy choice strategy for action selection.
+    It chooses the action with the highest estimated value.
+    """
+
+    def choose_action(self, actions: List[ActionRepresentation], options: StrategyOptions) -> ActionRepresentation:
+
+        return max(actions, key=lambda a: a.estimated_value)
+    
+class ChoiceEpsilonGreedy:
+    """
+    This class represents an epsilon-greedy choice strategy for action selection.
+    It chooses a random action with probability epsilon, otherwise it chooses the action with the highest estimated value.
+    """
+
+    def choose_action(self, actions: List[ActionRepresentation], options: StrategyOptions) -> ActionRepresentation:
+        if random.uniform(0, 1) < options.epsilon:
+            return random.choice(actions)
+        else:
+            return max(actions, key=lambda a: a.estimated_value)
+    
+class ChoiceGradientAscent:
+    """
+    This class represents a choice strategy for action selection based on Boltzmann probabilities.
+    It chooses an action based on the Boltzmann distribution of their estimated values.
+    """
+
+    def choose_action(self, actions: List[ActionRepresentation], options: StrategyOptions) -> ActionRepresentation:
+        probabilities = [action.boltzmann_prob for action in actions]
+        return np.random.choice(actions, p=probabilities)
+
+class UCBChoice:
+    """
+    This class represents a choice strategy based on Upper Confidence Bound (UCB).
+    It selects actions based on their estimated value and the number of times they have been chosen.
+    """
+
+    def choose_action(self, actions: List[ActionRepresentation], options: StrategyOptions) -> ActionRepresentation:
+        total_executions = sum(action.n_executions for action in actions)
+        if any(action.n_executions == 0 for action in actions):
+            # If any action has not been executed, choose it to ensure exploration
+            return random.choice([action for action in actions if action.n_executions == 0])
+        ucb_values = [
+            action.estimated_value + np.sqrt(2 * np.log(total_executions) / (action.n_executions))
+            for action in actions
+        ]
+        return actions[np.argmax(ucb_values)]
+
+class ActionChoiceFactory:
+    def get_action_choice(
+            self, implementation: ActionValueAgentStrategy, options: StrategyOptions
+    ):
+        """
+        Factory method to get the action choice strategy based on the implementation type.
+        """
+        if implementation == ActionValueAgentStrategy.Incremental:
+            if options.ucb_flag:
+                return UCBChoice()
+            elif options.epsilon == 0:
+                return ChoiceGreedy()
+            else:
+                return ChoiceEpsilonGreedy()
+        elif implementation == ActionValueAgentStrategy.GradientAscent:
+            return ChoiceGradientAscent()
+        else:
+            raise ValueError(f"Unknown ActionValueAgentStrategy: {implementation}")
 
 class ActionValueAgent(ABC):
 
@@ -147,9 +237,12 @@ class ActionValueAgent(ABC):
         self.name: str = name
         self.logger: RLLogger = logger or RLLogger(name=f"Agent_{name}")
 
+        # Call factory to get concrete implementation of action choice
+        self.action_choice = ActionChoiceFactory().get_action_choice(self.implementation, self.options)
+
         # Log experiment initialization
         strategy_params = {
-            "epsilon": getattr(options, "espsilon", "N/A"),
+            "epsilon": getattr(options, "epsilon", "N/A"),
             "step_size": getattr(options, "step_size", "N/A"),
             "stationary": getattr(options, "stationary_problem", "N/A"),
         }
@@ -201,44 +294,16 @@ class ActionValueAgent(ABC):
         Choose an action based on the agent's strategy.
         This method should be implemented in subclasses.
         """
-        if self.implementation == ActionValueAgentStrategy.Incremental:
 
-            highest_value_action = max(self.actions, key=lambda a: a.estimated_value)
+        chosen_action = self.action_choice.choose_action(self.actions, self.options)
 
-            is_exploration = random.uniform(0, 1) < self.options.espsilon
-
-            if is_exploration:
-                chosen_action = random.choice(self.actions)
-                self.logger.log_action_selection(
-                    self.name,
-                    chosen_action.action.name,
-                    chosen_action.estimated_value,
-                    exploration=True,
-                )
-                return chosen_action
-            else:
-                self.logger.log_action_selection(
-                    self.name,
-                    highest_value_action.action.name,
-                    highest_value_action.estimated_value,
-                    exploration=False,
-                )
-                return highest_value_action
-
-        elif self.implementation == ActionValueAgentStrategy.GradientAscent:
-
-            probabilities = [action.boltzmann_prob for action in self.actions]
-            chosen_action = np.random.choice(self.actions, p=probabilities)
-            self.logger.log_action_selection(
-                self.name,
-                chosen_action.action.name,
-                chosen_action.estimated_value,
-                exploration=False,
-            )
-            return chosen_action
-
-        else:
-            raise ValueError("Unknown ActionValueAgentStrategy implementation.")
+        self.logger.log_action_selection(
+            self.name,
+            chosen_action.action.name,
+            chosen_action.estimated_value,
+            exploration=True if self.implementation == ActionValueAgentStrategy.Incremental and self.options.epsilon > 0 else False
+        )
+        return chosen_action
 
     def update_estimated_action_value(
         self, action: ActionRepresentation, reward: Revenue
