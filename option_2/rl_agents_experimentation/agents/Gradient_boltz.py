@@ -16,8 +16,8 @@ class GrandentAgent(Agent):
         self.update_observations(pulled_arm, reward)
         for arm_idx in range(self.n_arms):
             if arm_idx == pulled_arm:
-                self.H_preference[arm_idx] += self.alpha*(reward - self.expected_reward[arm_idx])*(1- np.exp(self.H_preference[arm_idx])/sum(np.exp(self.H_preference)))
+                self.H_preference[arm_idx] += self.alpha*(reward - np.mean(self.expected_reward))*(1- np.exp(self.H_preference[arm_idx])/sum(np.exp(self.H_preference)))
             else:
-                self.H_preference[arm_idx] += self.alpha*(  self.expected_reward[arm_idx])*( np.exp(self.H_preference[arm_idx])/sum(np.exp(self.H_preference)))
+                self.H_preference[arm_idx] += self.alpha*(  np.mean(self.expected_reward))*( np.exp(self.H_preference[arm_idx])/sum(np.exp(self.H_preference)))
 
         

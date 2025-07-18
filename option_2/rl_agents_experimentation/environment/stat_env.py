@@ -15,6 +15,23 @@ class StatEnv(ABC):
         self.t += 1
         return  random.normalvariate(self.actual_mean[pulled_arm], self.sigma_noise)
     
+class bin_environment(StatEnv):
+    """
+    Binary environment where the reward is either 0 or 1.
+    """
+    def __init__(self, n_arms: int, probs:float, mean_env:list) -> None:
+        super().__init__(n_arms)
+        self.probs = probs
+        self.actual_mean = mean_env
+
+    def return_reward(self, pulled_arm: int) -> float:
+        self.t += 1
+        if random.uniform(0,1) < self.probs:
+            return self.actual_mean[0][pulled_arm]
+        else:
+            return self.actual_mean[1][pulled_arm]
+
+    
 
 class NonStatEnv(StatEnv):
     """
