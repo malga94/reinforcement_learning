@@ -120,6 +120,7 @@ class ActionValueIncrementalOptions(pydantic.BaseModel, StrategyOptions):
     step_size: float = 0.1  # Used in non-stationary problems
     epsilon: float = 0.1  # Epsilon for exploration in epsilon-greedy strategy
     ucb_flag: bool = False  # Use UCB strategy if True
+    ucb_constant: float = 2.0  # Constant for UCB strategy, default is 2.0
 
 
 class ActionValueGradientAscentOptions(pydantic.BaseModel, StrategyOptions):
@@ -144,7 +145,7 @@ class ActionRepresentation(ABC):
         self.estimated_value = estimated_value
         self.n_executions = n_executions
 
-        # Attribute used by Gradient Ascent strategy
+        # Attributes used by Gradient Ascent strategy
         self.boltzmann_prob: float = 0.0
 
 class ChoiceGreedy:
@@ -191,7 +192,7 @@ class UCBChoice:
             # If any action has not been executed, choose it to ensure exploration
             return random.choice([action for action in actions if action.n_executions == 0])
         ucb_values = [
-            action.estimated_value + np.sqrt(2 * np.log(total_executions) / (action.n_executions))
+            action.estimated_value + np.sqrt(options.ucb_constant * np.log(total_executions) / (action.n_executions))
             for action in actions
         ]
         return actions[np.argmax(ucb_values)]
@@ -240,6 +241,13 @@ class ActionValueAgent(ABC):
         # Call factory to get concrete implementation of action choice
         self.action_choice = ActionChoiceFactory().get_action_choice(self.implementation, self.options)
 
+        # Attributes for Gradient Ascent strategy
+        #TODO: Copilot is against placing these attributes in an if, as it leads to different instances of this 
+        # class having different sets of attributes. This may lead to AttributeErrors and reduced readibility; also doesn't play well with type checkers?
+        if self.implementation == ActionValueAgentStrategy.GradientAscent:
+            self.average_reward = 0.0
+            self.time_step = 0
+
         # Log experiment initialization
         strategy_params = {
             "epsilon": getattr(options, "epsilon", "N/A"),
@@ -274,7 +282,7 @@ class ActionValueAgent(ABC):
         self.logger.log_agent_summary(self.name, summary_text)
         return summary_text
 
-    def sumary_as_dict(self) -> dict:
+    def summary_as_dict(self) -> dict:
         """
         Return a summary of the agent's actions and their estimated values as a dictionary.
         """
@@ -336,10 +344,13 @@ class ActionValueAgent(ABC):
             N.B.: In this implementation, I don't think that the estimated value must converge to the real value!!!!
             """
 
+            self.time_step += 1
+            self.average_reward += (reward.value - self.average_reward) / self.time_step
+            
             # Chosen value update
             action.estimated_value += (
                 self.options.step_size
-                * (reward.value - action.estimated_value)
+                * (reward.value - self.average_reward)
                 * (1 - action.boltzmann_prob)
             )
 
@@ -348,7 +359,7 @@ class ActionValueAgent(ABC):
                 if other_action != action:
                     other_action.estimated_value -= (
                         self.options.step_size
-                        * (reward.value - other_action.estimated_value)
+                        * (reward.value - self.average_reward)
                         * other_action.boltzmann_prob
                     )
 
