@@ -9,7 +9,7 @@ env = GridEnv(grid_dim)
 policy= np.ones((env.n_states, len(env.possible_actions))) / len(env.possible_actions)
 
 
-agent = IterativePolicyEvaluationAgent(env, policy)
+agent = IterativePolicyEvaluationAgent(env, policy, theta=0.1e-5, discount_factor=0.9)
 value_function = agent.evaluate_policy()
 value_function_grid = agent.get_value_function_grid()
 print("Value Function (Grid):\n", value_function_grid)
